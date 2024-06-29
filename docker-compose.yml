@@ -1,0 +1,34 @@
+version: '2.3'
+
+services:
+  # Designed to be docker-compose up on client
+  amandad:
+    build:
+      context: .
+      dockerfile: docker/client.Dockerfile
+      # args:
+      #   AMANDA_VERSION: "${AMANDA_VERSION}"
+    image: ${AMANDA_DOCKER_REPO}:client
+    ports:
+      - "${AMANDA_CLIENT_SSH_IP}:${AMANDA_CLIENT_SSH_PORT}:22"
+    volumes:
+      - amanda-client-tarlists:/var/lib/amanda/gnutar-lists
+      - amanda-client-keys:/etc/keys
+      - /volume2/admin:/admin:ro
+      - /volume2/ITAR:/ITAR:ro
+      - /volume2/fileserver:/fileserver:ro
+    environment:
+      - BACKUP_UID=256822
+      - AMANDA_CONFIG_NAME=${AMANDA_CONFIG_NAME}
+      - TO_EMAIL=${AMANDA_TO_EMAIL}
+    extra_hosts:
+      - "amanda-server:${AMANDA_BACKUP_SERVER}"
+    restart: always
+    logging:
+      driver: "json-file" #I think synology changes the default to db???
+    cap_add:
+      - SYS_PTRACE # allow strace debugging
+
+volumes:
+  amanda-client-tarlists:
+  amanda-client-keys:

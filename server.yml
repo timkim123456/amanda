@@ -1,0 +1,85 @@
+version: '2.3'
+
+services:
+  # designed to be docker-compose run on server
+  server: &server
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+      # args:
+      #   AMANDA_VERSION: "${AMANDA_VERSION}"
+    image: ${AMANDA_DOCKER_REPO}:server
+    volumes:
+      - /holding:/holding
+      - /cache:/cache
+      - amanda-config:/etc/amanda/persist/${AMANDA_CONFIG_NAME}
+      - amanda-keys:/etc/keys
+      - amanda-logs:/var/log/amanda
+      # - amanda-var:/var/amanda
+      - amanda-tmp:/tmp/amanda
+    devices:
+      - "${AMANDA_TAPE_DRIVE}:${AMANDA_TAPE_DRIVE}"
+    environment:
+      - AMANDA_TAPE_DRIVE_NAME=${AMANDA_TAPE_DRIVE_NAME}
+      - AMANDA_CONFIG_NAME=${AMANDA_CONFIG_NAME}
+      - FROM_EMAIL=${AMANDA_FROM_EMAIL}
+      - TO_EMAIL=${AMANDA_TO_EMAIL}
+      - SMTP_SERVER=${AMANDA_SMTP_SERVER}
+      - BACKUP_CLIENTS=${AMANDA_BACKUP_CLIENTS}
+      - GNUPGHOME=/etc/keys
+      - AMANDA_GID=${AMANDA_TAPE_GID}
+    ports:
+      - "${AMANDA_SERVER_SSH_IP}:${AMANDA_SERVER_SSH_PORT}:22"
+    hostname: amanda-server
+    extra_hosts:
+      - "fileserver:${AMANDA_BACKUP_CLIENTS}"
+
+  # Backup
+  backup:
+    <<: *server
+    depends_on:
+      - server
+    command: ["amdump", "${AMANDA_CONFIG_NAME}"]
+  # abort: # does not work, needs to be in the same pid namespace, then it would
+  #   <<: *server
+  #   command: ["amcleanup", "-k", "${AMANDA_CONFIG_NAME}"]
+  cleanup:
+    <<: *server
+    command: ["amcleanup", "${AMANDA_CONFIG_NAME}"]
+
+  # Checking the tapes
+  check:
+    <<: *server
+    command: ["amcheck", "${AMANDA_CONFIG_NAME}"]
+  list:
+    <<: *server
+    command: ["amtape", "${AMANDA_CONFIG_NAME}", "show"]
+  current: #Display current slot/tape
+    <<: *server
+    command: ["amtape", "${AMANDA_CONFIG_NAME}", "current"]
+
+  # Tape maintenance
+  rewind:
+    <<: *server
+    command: ["mt", "-f", "${AMANDA_TAPE_DRIVE}", "rewind"]
+  eject:
+    <<: *server
+    command: ["mt-st", "-f", "${AMANDA_TAPE_DRIVE}", "eject"]
+
+  # Misc
+  dump-backup: #Use in conjunction with | tar tv, or | tar xv
+    <<: *server
+    command: ["amrecover", "${AMANDA_TAPE_DRIVE}", "-"]
+  print-config:
+    <<: *server
+    command: ["amadmin", "${AMANDA_CONFIG_NAME}", "config"]
+#  recover:
+#    image: vsiri/amanda:client
+#    command: ["amrecover", "${AMANDA_CONFIG_NAME}", "-s", "jacquard"]
+
+volumes:
+  amanda-config:
+  amanda-keys:
+  amanda-logs:
+  # amanda-var:
+  amanda-tmp:

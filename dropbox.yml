@@ -1,0 +1,20 @@
+version: '3.3'
+
+services:
+  dropbox:
+    build:
+      context: .
+      dockerfile: docker/dropbox.Dockerfile
+    hostname: jacquard-dropbox
+    environment:
+      - DOCKER_UID=63998
+      - DOCKER_GID=6
+    volumes:
+      - dropbox:/dropbox
+      - "amanda-config:/dropbox/amanda_etc:ro"
+    restart: always
+
+
+volumes:
+  amanda-config:
+  dropbox:

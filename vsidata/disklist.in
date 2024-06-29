@@ -1,0 +1,21 @@
+## ADMIN ##
+
+fileserver /admin server-compress-encrypt-user-tar-span 1
+
+## ITAR ##
+
+fileserver /ITAR server-compress-encrypt-user-tar-span 2
+
+## Fileserver ##
+# IT folder
+fileserver /fileserver/it server-compress-encrypt-user-tar-span 2
+
+# Everything else #
+
+fileserver /fileserver/./__rest__ /fileserver {
+  server-compress-encrypt-user-tar-span
+  exclude append "./data"
+  exclude append "./projects"
+  exclude append "./personal"
+  exclude append "./it"
+} 2

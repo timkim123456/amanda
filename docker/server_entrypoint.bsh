@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+
+set -eu
+
+HOME_DIR="$(eval echo ~${BACKUP_USERNAME})"
+
+ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# incase it doesn't already exist
+groupadd -g "${AMANDA_GID}" -o tape2 || :
+usermod -a -G tape2 ${BACKUP_USERNAME}
+
+for client in ${BACKUP_CLIENTS}; do
+  echo "${client} amandabackup amindexd amidxtaped" >> "${HOME_DIR}/.amandahosts"
+done
+
+ep -d /etc/muttrc > "${HOME_DIR}/.muttrc" 2>/dev/null
+ep -d "/etc/amanda/${AMANDA_CONFIG_NAME}/amanda.conf.in" > "/etc/amanda/${AMANDA_CONFIG_NAME}/amanda.conf" 2>/dev/null
+ep -d "/etc/amanda/${AMANDA_CONFIG_NAME}/advanced.conf.in" > "/etc/amanda/${AMANDA_CONFIG_NAME}/advanced.conf" 2>/dev/null
+chown "${BACKUP_USERNAME}:${BACKUP_GROUP}" \
+    "${HOME_DIR}/.muttrc" \
+    "/etc/amanda/${AMANDA_CONFIG_NAME}/amanda.conf" \
+    "/etc/amanda/${AMANDA_CONFIG_NAME}/advanced.conf" \
+    "${HOME_DIR}/.amandahosts"
+
+function permit()
+{
+  if [ "$(stat -c %U:%G "${1}")" != "${BACKUP_USERNAME}:${BACKUP_GROUP}" ]; then
+    mkdir -p "${1}"
+    chown -R ${BACKUP_USERNAME}:${BACKUP_GROUP} "${1}"
+  fi
+}
+
+permit "/etc/amanda/${AMANDA_CONFIG_NAME}"
+
+permit "/etc/amanda/persist/${AMANDA_CONFIG_NAME}"
+
+permit /holding/hd1
+
+permit /etc/keys
+chmod 700 /etc/keys
+
+# permit /var/amanda
+
+permit /var/log/amanda
+
+permit /tmp/amanda
+
+permit /cache
+
+if ! [ -e "/etc/keys/ssh_host_rsa_key" ]; then
+  ssh-keygen -t rsa -N "" -f /etc/keys/ssh_host_rsa_key >& /dev/null
+  ssh-keygen -t ed25519 -N "" -f /etc/keys/ssh_host_ed25519_key >& /dev/null
+  ssh-keygen -t ecdsa -N "" -f /etc/keys/ssh_host_ecdsa_key >& /dev/null
+  ssh-keygen -t dsa -N "" -f /etc/keys/ssh_host_dsa_key >& /dev/null
+fi
+
+if ! [ -e "/etc/keys/id_rsa" ]; then
+  ssh-keygen -t rsa -N "" -f /etc/keys/id_rsa >& /dev/null
+  chown ${BACKUP_USERNAME}:${BACKUP_GROUP} /etc/keys/id_rsa*
+fi
+
+ep -d "/etc/amanda/${AMANDA_CONFIG_NAME}/disklist.in" > "/etc/amanda/${AMANDA_CONFIG_NAME}/disklist" 2>/dev/null
+ssh fileserver -i /etc/keys/id_rsa -p 10070 find /fileserver/projects /fileserver/data /fileserver/personal -maxdepth 1 -mindepth 1 -type d -not -name @eaDir -not -name .DS_Store -print0 2>/dev/null | while IFS= read -r -d '' dir_name; do
+  echo "fileserver ${dir_name} server-compress-encrypt-user-tar-span 2" >> "/etc/amanda/${AMANDA_CONFIG_NAME}/disklist"
+done
+
+chown "${BACKUP_USERNAME}:${BACKUP_GROUP}" "/etc/amanda/${AMANDA_CONFIG_NAME}/disklist"
+
+if [ "$1" == "sshd" ]; then
+  exec /usr/sbin/sshd -D -e
+else
+  exec gosu ${BACKUP_USERNAME} "${@}"
+fi

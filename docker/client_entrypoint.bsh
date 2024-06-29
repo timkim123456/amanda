@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+set -eu
+
+ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+usermod -u "${BACKUP_UID}" amandabackup
+
+echo "${SERVER_NAME} ${BACKUP_USERNAME} amdump" >> /var/lib/amanda/.amandahosts
+chown -R ${BACKUP_USERNAME}:${BACKUP_GROUP} /var/lib/amanda/gnutar-lists /etc/amanda /var/log/amanda /tmp/amanda
+
+if ! [ -e "/etc/keys/ssh_host_rsa_key" ]; then
+  ssh-keygen -t rsa -N "" -f /etc/keys/ssh_host_rsa_key >& /dev/null
+  ssh-keygen -t ed25519 -N "" -f /etc/keys/ssh_host_ed25519_key >& /dev/null
+  ssh-keygen -t ecdsa -N "" -f /etc/keys/ssh_host_ecdsa_key >& /dev/null
+  ssh-keygen -t dsa -N "" -f /etc/keys/ssh_host_dsa_key >& /dev/null
+fi
+
+if ! [ -e "/etc/keys/id_rsa" ]; then
+  ssh-keygen -t rsa -N "" -f /etc/keys/id_rsa >& /dev/null
+  chown ${BACKUP_USERNAME}:${BACKUP_GROUP} /etc/keys/id_rsa*
+fi
+
+exec "${@}"
